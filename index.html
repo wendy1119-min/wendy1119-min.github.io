@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>设备销售数据看板</title>
+<script src="echarts.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+         background: #f4f6fb; color: #1f2a44; padding: 16px; max-width: 1100px; margin: 0 auto; }
+  .top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 14px; }
+  .top h1 { font-size: 20px; font-weight: 700; color: #16224a; }
+  .top .sub { font-size: 12px; color: #8a93a6; }
+  .badge { display:inline-block; background:#2f6bff; color:#fff; font-size:12px; font-weight:600;
+           padding:3px 10px; border-radius:20px; margin-left:8px; vertical-align:middle; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .kpi { background: #fff; border-radius: 14px; padding: 14px; box-shadow: 0 2px 10px rgba(30,50,100,.06); }
+  .kpi .lbl { font-size: 12px; color: #8a93a6; margin-bottom: 6px; }
+  .kpi .val { font-size: 22px; font-weight: 700; color: #16224a; line-height: 1.1; }
+  .kpi .unit { font-size: 12px; color: #8a93a6; font-weight: 400; margin-left: 2px; }
+  .kpi.hl .val { color: #2f6bff; }
+  .card { background: #fff; border-radius: 14px; padding: 14px 10px 6px; margin-bottom: 14px;
+          box-shadow: 0 2px 10px rgba(30,50,100,.06); }
+  .card h3 { font-size: 14px; color: #16224a; margin: 0 0 6px 6px; font-weight: 600; }
+  .chart { width: 100%; height: 320px; }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 6px 6px; }
+  .seg span { padding: 5px 12px; border-radius: 16px; background: #eef2fb; font-size: 12px;
+              color: #5a6478; cursor: pointer; transition: .2s; }
+  .seg span.active { background: #2f6bff; color: #fff; font-weight: 600; }
+  .note { font-size: 11px; color: #aab2c2; text-align: center; margin-top: 6px; line-height: 1.6; }
+  .tbl { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 4px; }
+  .tbl th, .tbl td { padding: 7px 8px; text-align: right; border-bottom: 1px solid #eef2fb; white-space: nowrap; }
+  .tbl th:first-child, .tbl td:first-child { text-align: left; }
+  .tbl thead th { color: #8a93a6; font-weight: 600; background: #fafbfe; position: sticky; top: 0; }
+  .tbl tbody tr:hover { background: #f6f9ff; }
+  .tbl tbody tr:last-child td { font-weight: 700; color: #16224a; border-top: 2px solid #dde3f0; }
+  @media (max-width: 600px) { .top h1 { font-size: 17px; } .kpi .val { font-size: 19px; } .chart { height: 280px; } }
+</style>
+</head>
+<body>
+  <div class="top">
+    <h1>设备销售数据看板<span class="badge" id="badge">最新</span></h1>
+    <div class="sub" id="sub"></div>
+  </div>
+  <div class="kpis" id="kpis"></div>
+  <div class="card"><h3>各部门 合同额 vs 发货额(含税) vs 回款额</h3><div id="c1" class="chart"></div></div>
+  <div class="card"><h3>各部门 考核毛利率</h3><div id="c2" class="chart"></div></div>
+  <div class="card"><h3>各部门 回款完成率</h3><div id="c3" class="chart"></div></div>
+  <div class="card"><h3>每月合计走势（1月–当月）</h3><div id="c4" class="chart"></div>
+    <div class="note">说明：模板历史月仅保存 合同额/发货额/回款额；考核毛利率【优先】取自「各产品线发货+库存」表（考核毛利÷未税发货额，未税口径），表中未含的月份（如当前月）才回退模板（含税口径）；回款达成率 仅 7、8月 可计算，故走势在回款达成率上断开。</div></div>
+  <div class="card">
+    <h3>各部门月度走势</h3>
+    <div class="seg" id="seg">
+      <span data-k="contract" class="active">合同额</span>
+      <span data-k="ship">发货额</span>
+      <span data-k="profitRate">考核毛利率</span>
+      <span data-k="rate">回款达成率</span>
+    </div>
+    <div id="c5" class="chart"></div>
+    <div class="note">考核毛利率：【优先】取自产品线发货表（未税口径=考核毛利÷未税发货额），表中未含的月份回退模板（含税口径=考核毛利÷发货额含税）；回款达成率 仅 7、8月 有明细。</div>
+  </div>
+  <div class="card">
+    <h3>各部门 今年累计（1月–当月）</h3>
+    <div style="overflow-x:auto">
+    <table class="tbl">
+      <thead><tr><th>部门</th><th>合同额(万)</th><th>发货额(万)</th><th>回款额(万)</th><th>考核毛利(万)</th><th>考核毛利率</th><th>当月回款完成率</th></tr></thead>
+      <tbody id="ytdBody"></tbody>
+    </table>
+    </div>
+    <div class="note">今年累计=1月–当月逐月累加；合同额/发货额/回款额/考核毛利为全期累计，考核毛利率为累计加权值(累计毛利÷累计发货额，其中1–7月毛利为未税口径、8月为含税口径故混合加权)。"当月回款完成率"取最新一期(当前月)数值，不累计。</div>
+  </div>
+  <div class="note">数据来源：销售出库单 / 退货单 / 合同 / 收款单 / 退款单 导出明细；考核毛利率【优先】取自「各产品线发货+库存」表（未税口径：考核毛利(未税)÷未税发货额），表中未含的月份回退模板（含税口径：考核毛利÷发货额含税）。口径：考核毛利=(含税单价-(基价-基价优惠))×实发数量（电商仓：含税单价×实发数量-电商考核成本）；发货额=出库-退货；回款=收款-退款；回款达成率=回款额/回款计划。综合运营部考核毛利按 0 填列。单位：万元 / %。</div>
+
+<script>
+const DATA = {"latest": {"label": "截止9月8号设备各项销售数据情况", "depts": [{"full": "拓峰设备-电商销售部", "name": "电商销售部", "contract": 4018189.0, "ship": 4036143.22, "profit": 62523.75, "recv": 1504879.1, "plan": 8000000.0, "rate": 0.1881, "profitRate": 0.0155}, {"full": "拓峰设备-杭州销售一部", "name": "杭州销售一部", "contract": 3244447.21, "ship": 6142747.61, "profit": 352193.99, "recv": 461011.95, "plan": 7981681.27, "rate": 0.0578, "profitRate": 0.0573}, {"full": "拓峰设备-杭州销售二部", "name": "杭州销售二部", "contract": 3167364.0, "ship": 1336220.0, "profit": 52191.08, "recv": 1165635.5, "plan": 3845829.05, "rate": 0.3031, "profitRate": 0.0391}, {"full": "拓峰设备-杭州销售四部", "name": "杭州销售四部", "contract": 674491.0, "ship": 491957.0, "profit": 10693.97, "recv": 238492.2, "plan": 244139.79, "rate": 0.9769, "profitRate": 0.0217}, {"full": "南京拓峰", "name": "南京拓峰", "contract": 1855311.16, "ship": 1650849.33, "profit": 64635.67, "recv": 680419.0, "plan": 4517992.86, "rate": 0.1506, "profitRate": 0.0392}, {"full": "拓峰设备-浙北销售部", "name": "浙北销售部", "contract": 3600969.47, "ship": 2191076.69, "profit": 115527.59, "recv": 817199.26, "plan": 5700005.41, "rate": 0.1434, "profitRate": 0.0527}, {"full": "拓峰设备-浙南销售部", "name": "浙南销售部", "contract": 2059727.64, "ship": 1928882.95, "profit": 61389.77, "recv": 831395.94, "plan": 7062357.43, "rate": 0.1177, "profitRate": 0.0318}, {"full": "拓峰设备-综合运营部", "name": "综合运营部", "contract": 197597.71, "ship": 203997.71, "profit": 0.0, "recv": 0.0, "plan": 280000.0, "rate": 0.0, "profitRate": 0.0}], "total": {"contract": 18818097.19, "ship": 17981874.51, "profit": 719155.82, "recv": 5699032.95, "plan": 37632005.81, "rate": 0.1514, "profitRate": 0.04}}, "months": ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月"], "monthlyTotal": {"1月": {"contract": 34652642.0, "ship": 34532907.32, "recv": 31376899.17, "profit": 1284608.92, "plan": null, "rate": null, "profitRate": 0.0419}, "2月": {"contract": 18367845.13, "ship": 17160228.11, "recv": 23590795.15, "profit": 685188.74, "plan": null, "rate": null, "profitRate": 0.0448}, "3月": {"contract": 49615091.14, "ship": 42591147.21, "recv": 38543198.46, "profit": 1577058.34, "plan": null, "rate": null, "profitRate": 0.0414}, "4月": {"contract": 39851995.95, "ship": 47155677.2, "recv": 37450946.55, "profit": 1543220.75, "plan": null, "rate": null, "profitRate": 0.0366}, "5月": {"contract": 48748001.94, "ship": 40242874.71, "recv": 48624973.77, "profit": 1564544.24, "plan": null, "rate": null, "profitRate": 0.0452}, "6月": {"contract": 47940932.72, "ship": 50505988.78, "recv": 50441832.89, "profit": 1466039.62, "plan": null, "rate": null, "profitRate": 0.0328}, "7月": {"contract": 47237809.23, "ship": 54389254.78, "recv": 49643922.83, "profit": 1618927.61, "plan": 42521663.17, "rate": 1.1675, "profitRate": 0.0336}, "8月": {"contract": 37496585.18, "ship": 40024030.51, "recv": 42802299.9, "profit": 1334431.31, "plan": null, "rate": null, "profitRate": 0.0377}, "9月": {"contract": 18818097.19, "ship": 17981874.51, "recv": 5699032.95, "profit": 719155.82, "plan": 37632005.81, "rate": 0.1514, "profitRate": 0.04}}, "monthlyDepts": {"电商销售部": {"1月": {"full": "拓峰设备-电商销售部", "name": "电商销售部", "contract": 5736523.8, "ship": 5469041.0, "profit": 82672.73, "recv": 5257339.2, "plan": null, "rate": null, "profitRate": 0.0171}, "2月": {"full": "拓峰设备-电商销售部", "name": "电商销售部", "contract": 3930305.38, "ship": 4469291.0, "profit": 36565.44, "recv": 4270083.14, "plan": null, "rate": null, "profitRate": 0.0092}, "3月": {"full": "拓峰设备-电商销售部", "name": "电商销售部", "contract": 6641224.78, "ship": 8363998.47, "profit": 133324.18, "recv": 8236166.32, "plan": null, "rate": null, "profitRate": 0.018}, "4月": {"full": "拓峰设备-电商销售部", "name": "电商销售部", "contract": 11312216.8, "ship": 13100753.8, "profit": 146798.99, "recv": 13103463.65, "plan": null, "rate": null, "profitRate": 0.0127}, "5月": {"full": "拓峰设备-电商销售部", "name": "电商销售部", "contract": 19220501.98, "ship": 13855855.49, "profit": 149920.22, "recv": 15175020.96, "plan": null, "rate": null, "profitRate": 0.0122}, "6月": {"full": "拓峰设备-电商销售部", "name": "电商销售部", "contract": 10151853.11, "ship": 16070131.71, "profit": 211213.41, "recv": 14368594.52, "plan": null, "rate": null, "profitRate": 0.0149}, "7月": {"full": "拓峰设备-电商销售部", "name": "电商销售部", "contract": 10080546.61, "ship": 14390232.36, "profit": 193906.76, "recv": 14668284.63, "plan": 12000000.0, "rate": 1.2224, "profitRate": 0.0152}, "8月": {"full": "拓峰设备-电商销售部", "name": "电商销售部", "contract": 7463293.12, "ship": 8707556.06, "profit": 148127.98, "recv": 9359026.98, "plan": null, "rate": null, "profitRate": 0.0192}, "9月": {"full": "拓峰设备-电商销售部", "name": "电商销售部", "contract": 4018189.0, "ship": 4036143.22, "profit": 62523.75, "recv": 1504879.1, "plan": 8000000.0, "rate": 0.1881, "profitRate": 0.0155}}, "杭州销售一部": {"1月": {"full": "拓峰设备-杭州销售一部", "name": "杭州销售一部", "contract": 8950042.04, "ship": 11638289.4, "profit": 435192.29, "recv": 8714713.19, "plan": null, "rate": null, "profitRate": 0.0423}, "2月": {"full": "拓峰设备-杭州销售一部", "name": "杭州销售一部", "contract": 5020816.05, "ship": 4049806.5, "profit": 208004.57, "recv": 6918873.9, "plan": null, "rate": null, "profitRate": 0.058}, "3月": {"full": "拓峰设备-杭州销售一部", "name": "杭州销售一部", "contract": 11888301.52, "ship": 10232779.36, "profit": 410818.76, "recv": 11770066.29, "plan": null, "rate": null, "profitRate": 0.0454}, "4月": {"full": "拓峰设备-杭州销售一部", "name": "杭州销售一部", "contract": 8443691.82, "ship": 8685612.95, "profit": 389475.79, "recv": 7164206.37, "plan": null, "rate": null, "profitRate": 0.0507}, "5月": {"full": "拓峰设备-杭州销售一部", "name": "杭州销售一部", "contract": 8657045.17, "ship": 8275839.07, "profit": 332431.03, "recv": 10885197.28, "plan": null, "rate": null, "profitRate": 0.0454}, "6月": {"full": "拓峰设备-杭州销售一部", "name": "杭州销售一部", "contract": 8987484.83, "ship": 9395591.04, "profit": 433015.76, "recv": 11999533.57, "plan": null, "rate": null, "profitRate": 0.0521}, "7月": {"full": "拓峰设备-杭州销售一部", "name": "杭州销售一部", "contract": 14889576.06, "ship": 11354140.82, "profit": 407016.92, "recv": 8237917.39, "plan": 8082015.97, "rate": 1.0193, "profitRate": 0.0405}, "8月": {"full": "拓峰设备-杭州销售一部", "name": "杭州销售一部", "contract": 9063536.51, "ship": 10000046.61, "profit": 588735.93, "recv": 10198924.96, "plan": null, "rate": null, "profitRate": 0.0665}, "9月": {"full": "拓峰设备-杭州销售一部", "name": "杭州销售一部", "contract": 3244447.21, "ship": 6142747.61, "profit": 352193.99, "recv": 461011.95, "plan": 7981681.27, "rate": 0.0578, "profitRate": 0.0573}}, "杭州销售二部": {"1月": {"full": "拓峰设备-杭州销售二部", "name": "杭州销售二部", "contract": 3855769.0, "ship": 4278060.0, "profit": 186923.56, "recv": 3675391.8, "plan": null, "rate": null, "profitRate": 0.0494}, "2月": {"full": "拓峰设备-杭州销售二部", "name": "杭州销售二部", "contract": 1815423.0, "ship": 1328222.0, "profit": 48121.54, "recv": 2183128.68, "plan": null, "rate": null, "profitRate": 0.0409}, "3月": {"full": "拓峰设备-杭州销售二部", "name": "杭州销售二部", "contract": 3901716.0, "ship": 3889582.5, "profit": 250669.61, "recv": 2610351.27, "plan": null, "rate": null, "profitRate": 0.0728}, "4月": {"full": "拓峰设备-杭州销售二部", "name": "杭州销售二部", "contract": 4048289.5, "ship": 4002847.3, "profit": 268194.3, "recv": 3042033.49, "plan": null, "rate": null, "profitRate": 0.0757}, "5月": {"full": "拓峰设备-杭州销售二部", "name": "杭州销售二部", "contract": 4811705.2, "ship": 3214515.9, "profit": 93401.21, "recv": 3642032.65, "plan": null, "rate": null, "profitRate": 0.0328}, "6月": {"full": "拓峰设备-杭州销售二部", "name": "杭州销售二部", "contract": 5827241.07, "ship": 6046212.9, "profit": 286149.15, "recv": 4795072.86, "plan": null, "rate": null, "profitRate": 0.0535}, "7月": {"full": "拓峰设备-杭州销售二部", "name": "杭州销售二部", "contract": 4990750.18, "ship": 5144879.75, "profit": 222581.2, "recv": 5134262.88, "plan": 3985059.99, "rate": 1.2884, "profitRate": 0.0489}, "8月": {"full": "拓峰设备-杭州销售二部", "name": "杭州销售二部", "contract": 4299093.35, "ship": 4058547.21, "profit": 156091.33, "recv": 4089782.84, "plan": null, "rate": null, "profitRate": 0.0435}, "9月": {"full": "拓峰设备-杭州销售二部", "name": "杭州销售二部", "contract": 3167364.0, "ship": 1336220.0, "profit": 52191.08, "recv": 1165635.5, "plan": 3845829.05, "rate": 0.3031, "profitRate": 0.0391}}, "杭州销售四部": {"1月": {"full": "拓峰设备-杭州销售四部", "name": "杭州销售四部", "contract": 643206.0, "ship": 546569.05, "profit": 10502.11, "recv": 80547.0, "plan": null, "rate": null, "profitRate": 0.0217}, "2月": {"full": "拓峰设备-杭州销售四部", "name": "杭州销售四部", "contract": 57443.0, "ship": 192561.0, "profit": 11042.21, "recv": 526971.38, "plan": null, "rate": null, "profitRate": 0.0648}, "3月": {"full": "拓峰设备-杭州销售四部", "name": "杭州销售四部", "contract": 305908.0, "ship": 274163.0, "profit": 14086.53, "recv": 243508.7, "plan": null, "rate": null, "profitRate": 0.0581}, "4月": {"full": "拓峰设备-杭州销售四部", "name": "杭州销售四部", "contract": 395932.01, "ship": 343314.01, "profit": 3626.91, "recv": 79394.0, "plan": null, "rate": null, "profitRate": 0.0119}, "5月": {"full": "拓峰设备-杭州销售四部", "name": "杭州销售四部", "contract": 279315.99, "ship": 109262.77, "profit": 2842.51, "recv": 463315.0, "plan": null, "rate": null, "profitRate": 0.0294}, "6月": {"full": "拓峰设备-杭州销售四部", "name": "杭州销售四部", "contract": 528425.0, "ship": 396052.75, "profit": 7198.87, "recv": 416794.01, "plan": null, "rate": null, "profitRate": 0.0205}, "7月": {"full": "拓峰设备-杭州销售四部", "name": "杭州销售四部", "contract": 881596.2, "ship": 782996.2, "profit": 14837.0, "recv": 727380.6, "plan": 343438.7, "rate": 2.1179, "profitRate": 0.0214}, "8月": {"full": "拓峰设备-杭州销售四部", "name": "杭州销售四部", "contract": 854402.0, "ship": 747636.0, "profit": 8104.57, "recv": 774100.17, "plan": null, "rate": null, "profitRate": 0.0122}, "9月": {"full": "拓峰设备-杭州销售四部", "name": "杭州销售四部", "contract": 674491.0, "ship": 491957.0, "profit": 10693.97, "recv": 238492.2, "plan": 244139.79, "rate": 0.9769, "profitRate": 0.0217}}, "南京拓峰": {"1月": {"full": "南京拓峰", "name": "南京拓峰", "contract": 4338024.86, "ship": 3697042.25, "profit": 289483.92, "recv": 4102498.71, "plan": null, "rate": null, "profitRate": 0.0885}, "2月": {"full": "南京拓峰", "name": "南京拓峰", "contract": 2164715.3, "ship": 2635015.58, "profit": 166387.49, "recv": 3070437.2, "plan": null, "rate": null, "profitRate": 0.0714}, "3月": {"full": "南京拓峰", "name": "南京拓峰", "contract": 9290943.26, "ship": 6918254.9, "profit": 326748.83, "recv": 4287026.41, "plan": null, "rate": null, "profitRate": 0.0534}, "4月": {"full": "南京拓峰", "name": "南京拓峰", "contract": 5327914.59, "ship": 5499176.62, "profit": 156286.0, "recv": 4750154.46, "plan": null, "rate": null, "profitRate": 0.0321}, "5月": {"full": "南京拓峰", "name": "南京拓峰", "contract": 6071745.39, "ship": 3651245.62, "profit": 109727.38, "recv": 5283198.67, "plan": null, "rate": null, "profitRate": 0.034}, "6月": {"full": "南京拓峰", "name": "南京拓峰", "contract": 9537370.36, "ship": 6277014.83, "profit": 214428.44, "recv": 6812718.76, "plan": null, "rate": null, "profitRate": 0.0386}, "7月": {"full": "南京拓峰", "name": "南京拓峰", "contract": 4036001.05, "ship": 7556028.53, "profit": 213256.34, "recv": 6941435.19, "plan": 5697820.27, "rate": 1.2183, "profitRate": 0.0319}, "8月": {"full": "南京拓峰", "name": "南京拓峰", "contract": 5742596.62, "ship": 7555513.04, "profit": 125305.75, "recv": 4756396.07, "plan": null, "rate": null, "profitRate": 0.0187}, "9月": {"full": "南京拓峰", "name": "南京拓峰", "contract": 1855311.16, "ship": 1650849.33, "profit": 64635.67, "recv": 680419.0, "plan": 4517992.86, "rate": 0.1506, "profitRate": 0.0392}}, "浙北销售部": {"1月": {"full": "拓峰设备-浙北销售部", "name": "浙北销售部", "contract": 3833167.85, "ship": 3179671.1, "profit": 164368.98, "recv": 5552160.99, "plan": null, "rate": null, "profitRate": 0.0584}, "2月": {"full": "拓峰设备-浙北销售部", "name": "浙北销售部", "contract": 1763983.6, "ship": 1853970.05, "profit": 81111.22, "recv": 3111766.97, "plan": null, "rate": null, "profitRate": 0.0494}, "3月": {"full": "拓峰设备-浙北销售部", "name": "浙北销售部", "contract": 9137460.55, "ship": 6113780.08, "profit": 272027.05, "recv": 6108002.84, "plan": null, "rate": null, "profitRate": 0.0503}, "4月": {"full": "拓峰设备-浙北销售部", "name": "浙北销售部", "contract": 5420695.43, "ship": 6608434.82, "profit": 222736.24, "recv": 2836887.43, "plan": null, "rate": null, "profitRate": 0.0381}, "5月": {"full": "拓峰设备-浙北销售部", "name": "浙北销售部", "contract": 3909393.93, "ship": 3848426.77, "profit": 148199.16, "recv": 5715511.09, "plan": null, "rate": null, "profitRate": 0.0435}, "6月": {"full": "拓峰设备-浙北销售部", "name": "浙北销售部", "contract": 5867544.07, "ship": 6215440.35, "profit": 183311.41, "recv": 4990295.27, "plan": null, "rate": null, "profitRate": 0.0333}, "7月": {"full": "拓峰设备-浙北销售部", "name": "浙北销售部", "contract": 3968722.45, "ship": 5413216.3, "profit": 283538.44, "recv": 5125322.88, "plan": 5060259.53, "rate": 1.0129, "profitRate": 0.0592}, "8月": {"full": "拓峰设备-浙北销售部", "name": "浙北销售部", "contract": 4589159.45, "ship": 3602944.44, "profit": 144028.79, "recv": 6806707.86, "plan": null, "rate": null, "profitRate": 0.0452}, "9月": {"full": "拓峰设备-浙北销售部", "name": "浙北销售部", "contract": 3600969.47, "ship": 2191076.69, "profit": 115527.59, "recv": 817199.26, "plan": 5700005.41, "rate": 0.1434, "profitRate": 0.0527}}, "浙南销售部": {"1月": {"full": "拓峰设备-浙南销售部", "name": "浙南销售部", "contract": 7295908.45, "ship": 5724234.52, "profit": 115465.33, "recv": 3994248.28, "plan": null, "rate": null, "profitRate": 0.0228}, "2月": {"full": "拓峰设备-浙南销售部", "name": "浙南销售部", "contract": 3615158.8, "ship": 2631361.98, "profit": 133956.27, "recv": 3509533.88, "plan": null, "rate": null, "profitRate": 0.0575}, "3月": {"full": "拓峰设备-浙南销售部", "name": "浙南销售部", "contract": 8449537.03, "ship": 6798588.9, "profit": 169383.38, "recv": 5288076.63, "plan": null, "rate": null, "profitRate": 0.0282}, "4月": {"full": "拓峰设备-浙南销售部", "name": "浙南销售部", "contract": 4903255.8, "ship": 8915537.7, "profit": 356102.52, "recv": 6474807.15, "plan": null, "rate": null, "profitRate": 0.0451}, "5月": {"full": "拓峰设备-浙南销售部", "name": "浙南销售部", "contract": 4215060.04, "ship": 5842387.21, "profit": 728022.73, "recv": 5159014.04, "plan": null, "rate": null, "profitRate": 0.1408}, "6月": {"full": "拓峰设备-浙南销售部", "name": "浙南销售部", "contract": 6409301.41, "ship": 5365862.33, "profit": 130722.57, "recv": 6646212.63, "plan": null, "rate": null, "profitRate": 0.0275}, "7月": {"full": "拓峰设备-浙南销售部", "name": "浙南销售部", "contract": 7741542.31, "ship": 9181882.98, "profit": 283790.95, "recv": 8070840.2, "plan": 6749326.02, "rate": 1.1958, "profitRate": 0.0349}, "8月": {"full": "拓峰设备-浙南销售部", "name": "浙南销售部", "contract": 5151092.67, "ship": 4978107.44, "profit": 164036.96, "recv": 6280373.07, "plan": null, "rate": null, "profitRate": 0.0372}, "9月": {"full": "拓峰设备-浙南销售部", "name": "浙南销售部", "contract": 2059727.64, "ship": 1928882.95, "profit": 61389.77, "recv": 831395.94, "plan": 7062357.43, "rate": 0.1177, "profitRate": 0.0318}}, "综合运营部": {"1月": {"full": "拓峰设备-综合运营部", "name": "综合运营部", "contract": 0.0, "ship": 0.0, "profit": 0.0, "recv": 0.0, "plan": null, "rate": null, "profitRate": 0.0}, "2月": {"full": "拓峰设备-综合运营部", "name": "综合运营部", "contract": 0.0, "ship": 0.0, "profit": 0.0, "recv": 0.0, "plan": null, "rate": null, "profitRate": 0.0}, "3月": {"full": "拓峰设备-综合运营部", "name": "综合运营部", "contract": 0.0, "ship": 0.0, "profit": 0.0, "recv": 0.0, "plan": null, "rate": null, "profitRate": 0.0}, "4月": {"full": "拓峰设备-综合运营部", "name": "综合运营部", "contract": 0.0, "ship": 0.0, "profit": 0.0, "recv": 0.0, "plan": null, "rate": null, "profitRate": 0.0}, "5月": {"full": "拓峰设备-综合运营部", "name": "综合运营部", "contract": 1583234.24, "ship": 1445341.88, "profit": 0.0, "recv": 2301684.08, "plan": null, "rate": null, "profitRate": 0.0}, "6月": {"full": "拓峰设备-综合运营部", "name": "综合运营部", "contract": 631712.87, "ship": 739682.87, "profit": 0.0, "recv": 412611.27, "plan": null, "rate": null, "profitRate": 0.0}, "7月": {"full": "拓峰设备-综合运营部", "name": "综合运营部", "contract": 649074.37, "ship": 565877.84, "profit": 0.0, "recv": 738479.06, "plan": 603742.69, "rate": 1.2232, "profitRate": 0.0}, "8月": {"full": "拓峰设备-综合运营部", "name": "综合运营部", "contract": 333411.46, "ship": 373679.71, "profit": 0.0, "recv": 536987.95, "plan": null, "rate": null, "profitRate": 0.0}, "9月": {"full": "拓峰设备-综合运营部", "name": "综合运营部", "contract": 197597.71, "ship": 203997.71, "profit": 0.0, "recv": 0.0, "plan": 280000.0, "rate": 0.0, "profitRate": 0.0}}}, "deptOrder": ["电商销售部", "杭州销售一部", "杭州销售二部", "杭州销售四部", "南京拓峰", "浙北销售部", "浙南销售部", "综合运营部"], "ytd": {"total": {"contract": 342729000.48, "ship": 344583983.13, "recv": 328173901.66999996, "profit": 11793175.350000001, "profitRate": 0.0342}, "depts": {"电商销售部": {"contract": 78554654.58, "ship": 88463003.11, "recv": 85942858.5, "profit": 1165053.46, "profitRate": 0.0132}, "杭州销售一部": {"contract": 79144941.21, "ship": 79774853.36, "recv": 76350444.9, "profit": 3556885.04, "profitRate": 0.0446}, "杭州销售二部": {"contract": 36717351.3, "ship": 33299087.560000002, "recv": 30337691.97, "profit": 1564322.9800000002, "profitRate": 0.047}, "杭州销售四部": {"contract": 4620719.2, "ship": 3884511.7800000003, "recv": 3550503.06, "profit": 82934.68, "profitRate": 0.0214}, "南京拓峰": {"contract": 48364622.58999999, "ship": 45440140.7, "recv": 40684284.47, "profit": 1666259.82, "profitRate": 0.0367}, "浙北销售部": {"contract": 42091096.800000004, "ship": 39026960.6, "recv": 41063854.589999996, "profit": 1614848.8800000001, "profitRate": 0.0414}, "浙南销售部": {"contract": 49840584.150000006, "ship": 51366846.010000005, "recv": 46254501.81999999, "profit": 2142870.48, "profitRate": 0.0417}, "综合运营部": {"contract": 3395030.65, "ship": 3328580.01, "recv": 3989762.3600000003, "profit": 0.0, "profitRate": 0.0}}}, "updated": "2026-09-09 13:49"};
+const L = DATA.latest;
+const fmt = v => (v/10000).toFixed(1);
+const charts = {};
+
+document.getElementById('badge').textContent = L.label;
+document.getElementById('sub').textContent = '看板更新：' + DATA.updated + ' · 单位：万元 / %';
+
+function renderKpis(){
+  const t = L.total;
+  const items=[
+    {l:'合同额',v:fmt(t.contract),u:'万',hl:true},
+    {l:'发货额(含税)',v:fmt(t.ship),u:'万'},
+    {l:'考核毛利',v:fmt(t.profit),u:'万'},
+    {l:'考核毛利率',v:(t.profitRate*100).toFixed(1),u:'%',hl:true},
+    {l:'回款额',v:fmt(t.recv),u:'万'},
+    {l:'回款完成率',v:(t.rate*100).toFixed(1),u:'%',hl:true},
+  ];
+  document.getElementById('kpis').innerHTML = items.map(it=>
+    `<div class="kpi ${it.hl?'hl':''}"><div class="lbl">${it.l}</div><div class="val">${it.v}<span class="unit">${it.u}</span></div></div>`).join('');
+}
+function deptNames(){ return L.depts.map(d=>d.name); }
+function getSeries(key){ return L.depts.map(d=>d[key]); }
+
+function renderC1(){
+  const names=deptNames();
+  charts.c1.setOption({
+    tooltip:{trigger:'axis', valueFormatter:v=>fmt(v)+'万'},
+    legend:{bottom:0, textStyle:{fontSize:11}},
+    grid:{left:8,right:14,top:20,bottom:48,containLabel:true},
+    xAxis:{type:'category',data:names,axisLabel:{interval:0,rotate:32,fontSize:11}},
+    yAxis:{type:'value',axisLabel:{formatter:v=>v/10000+'万'}},
+    series:[
+      {name:'合同额',type:'bar',data:getSeries('contract'),itemStyle:{color:'#2f6bff',borderRadius:[4,4,0,0]}},
+      {name:'发货额',type:'bar',data:getSeries('ship'),itemStyle:{color:'#13c2c2',borderRadius:[4,4,0,0]}},
+      {name:'回款额',type:'bar',data:getSeries('recv'),itemStyle:{color:'#fa541c',borderRadius:[4,4,0,0]}},
+    ]
+  });
+}
+function renderC2(){
+  const names=deptNames();
+  const rates=L.depts.map(d=>+(d.profitRate*100).toFixed(1));
+  charts.c2.setOption({
+    tooltip:{trigger:'axis', valueFormatter:v=>v+'%'},
+    grid:{left:8,right:14,top:20,bottom:48,containLabel:true},
+    xAxis:{type:'category',data:names,axisLabel:{interval:0,rotate:32,fontSize:11}},
+    yAxis:{type:'value',axisLabel:{formatter:'{value}%'}},
+    series:[{type:'bar',data:rates.map(v=>({value:v,itemStyle:{color: v===0?'#d9d9d9':'#52c41a',borderRadius:[4,4,0,0]}}))}]
+  });
+}
+function renderC3(){
+  const names=deptNames();
+  const rates=L.depts.map(d=>+(d.rate*100).toFixed(1));
+  charts.c3.setOption({
+    tooltip:{trigger:'axis', valueFormatter:v=>v+'%'},
+    grid:{left:8,right:14,top:20,bottom:48,containLabel:true},
+    xAxis:{type:'category',data:names,axisLabel:{interval:0,rotate:32,fontSize:11}},
+    yAxis:{type:'value',axisLabel:{formatter:'{value}%'}},
+    series:[{type:'bar',data:rates.map(v=>({value:v,itemStyle:{color: v>=100?'#52c41a':(v>=70?'#2f6bff':'#fa541c'),borderRadius:[4,4,0,0]}}))}]
+  });
+}
+function renderC4(){
+  const ms=DATA.months;
+  const mt=DATA.monthlyTotal;
+  const mk=key=>ms.map(m=>{const v=mt[m][key]; return (v===null||v===undefined)?null:+(v/10000).toFixed(1);});
+  const mkPct=key=>ms.map(m=>{const v=mt[m][key]; return (v===null||v===undefined)?null:+(v*100).toFixed(1);});
+  charts.c4.setOption({
+    tooltip:{trigger:'axis'},
+    legend:{bottom:0,textStyle:{fontSize:11}},
+    grid:{left:8,right:14,top:20,bottom:48,containLabel:true},
+    xAxis:{type:'category',data:ms,axisLabel:{fontSize:11}},
+    yAxis:[
+      {type:'value',name:'万',axisLabel:{formatter:'{value}万'}},
+      {type:'value',name:'%',axisLabel:{formatter:'{value}%'},splitLine:{show:false}}
+    ],
+    series:[
+      {name:'合同额',type:'line',smooth:true,connectNulls:false,yAxisIndex:0,data:mk('contract'),itemStyle:{color:'#2f6bff'}},
+      {name:'发货额',type:'line',smooth:true,connectNulls:false,yAxisIndex:0,data:mk('ship'),itemStyle:{color:'#13c2c2'}},
+      {name:'回款额',type:'line',smooth:true,connectNulls:false,yAxisIndex:0,data:mk('recv'),itemStyle:{color:'#fa541c'}},
+      {name:'考核毛利率',type:'line',smooth:true,connectNulls:false,yAxisIndex:1,data:mkPct('profitRate'),itemStyle:{color:'#52c41a'}},
+    ]
+  });
+}
+let metricKey='contract';
+function renderC5(){
+  const names=DATA.deptOrder;
+  const isPct=(metricKey==='profitRate'||metricKey==='rate');
+  const series=names.map(dn=>{
+    const data=DATA.months.map(m=>{
+      const rec=DATA.monthlyDepts[dn][m];
+      const v=rec?rec[metricKey]:null;
+      if(v===null||v===undefined) return null;
+      return isPct? +(v*100).toFixed(1): +(v/10000).toFixed(1);
+    });
+    return {name:dn,type:'line',smooth:true,connectNulls:false,data:data};
+  });
+  charts.c5.setOption({
+    tooltip:{trigger:'axis', valueFormatter:v=>isPct? v+'%' : v+'万'},
+    legend:{bottom:0,textStyle:{fontSize:11}},
+    grid:{left:8,right:14,top:20,bottom:48,containLabel:true},
+    xAxis:{type:'category',data:DATA.months,axisLabel:{fontSize:11}},
+    yAxis:{type:'value',axisLabel:{formatter:isPct?'{value}%':'{value}万'}},
+    series:series
+  }, true);
+}
+function renderYtd(){
+  const y = DATA.ytd;
+  const names = DATA.deptOrder;
+  // 当月回款完成率：取最新一期(当前月)快照的 rate，不累计
+  const curRate = {};
+  DATA.latest.depts.forEach(d=>{ curRate[d.name] = d.rate; });
+  const curTotalRate = DATA.latest.total.rate;
+  const rows = names.map(dn=>{
+    const d = y.depts[dn];
+    const r = curRate[dn];
+    return `<tr><td>${dn}</td><td>${fmt(d.contract)}</td><td>${fmt(d.ship)}</td><td>${fmt(d.recv)}</td><td>${fmt(d.profit)}</td><td>${d.profitRate!=null?(d.profitRate*100).toFixed(1)+'%':'—'}</td><td>${r!=null?(r*100).toFixed(1)+'%':'—'}</td></tr>`;
+  });
+  const t = y.total;
+  rows.push(`<tr><td>合计</td><td>${fmt(t.contract)}</td><td>${fmt(t.ship)}</td><td>${fmt(t.recv)}</td><td>${fmt(t.profit)}</td><td>${t.profitRate!=null?(t.profitRate*100).toFixed(1)+'%':'—'}</td><td>${curTotalRate!=null?(curTotalRate*100).toFixed(1)+'%':'—'}</td></tr>`);
+  document.getElementById('ytdBody').innerHTML = rows.join('');
+}
+function renderAll(){
+  renderKpis(); renderC1(); renderC2(); renderC3(); renderC4(); renderC5(); renderYtd();
+}
+function init(){
+  charts.c1=echarts.init(document.getElementById('c1'));
+  charts.c2=echarts.init(document.getElementById('c2'));
+  charts.c3=echarts.init(document.getElementById('c3'));
+  charts.c4=echarts.init(document.getElementById('c4'));
+  charts.c5=echarts.init(document.getElementById('c5'));
+  renderAll();
+  document.getElementById('seg').addEventListener('click', e=>{
+    const t=e.target; if(t.tagName!=='SPAN') return;
+    metricKey=t.dataset.k;
+    [...document.querySelectorAll('#seg span')].forEach(s=>s.classList.remove('active'));
+    t.classList.add('active');
+    renderC5();
+  });
+  window.addEventListener('resize',()=>{Object.values(charts).forEach(c=>c.resize());});
+}
+init();
+</script>
+</body>
+</html>
